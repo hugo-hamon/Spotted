@@ -1,0 +1,10 @@
+[eel]
+open_browser_on_start = true
+port = 8000
+
+[game]
+duration_seconds = 120
+uniqueness_budget_ms = 150
+generation_attempts = 5
+storage_file = "data/scores.json"
+max_records = 300
