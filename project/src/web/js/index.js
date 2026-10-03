@@ -1,3 +1,4 @@
+import { ATOMS, atomSymbol, atomColor, installAtomLabels, removeAtomLabels } from './atoms.js';
 import { installPicking } from './picking.js';
 const $ = id => document.getElementById(id);
 function readPalette() {
@@ -60,25 +61,26 @@ function controls() {
   $('save-form').querySelector('button').disabled = busy;
   $('replay').disabled = busy;
 }
-function svgMarkup(points, edges, highlight = null, width = 180, height = 150) {
+function svgMarkup(points, edges, highlight = null, width = 180, height = 150, atoms = null) {
   const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
   const minX = Math.min(...xs), minY = Math.min(...ys), dx = Math.max(...xs) - minX || 1, dy = Math.max(...ys) - minY || 1;
   const scale = Math.min((width - 36) / dx, (height - 36) / dy);
   const xy = points.map(([x,y]) => [(width - dx * scale) / 2 + (x-minX)*scale, (height-dy*scale)/2+(y-minY)*scale]);
   const lines = edges.map(([a,b]) => `<line x1="${xy[a][0]}" y1="${xy[a][1]}" x2="${xy[b][0]}" y2="${xy[b][1]}" stroke="${highlight ? highlight.has(a) && highlight.has(b) ? GREEN : palette.edge : PURPLE}" stroke-width="${highlight ? 2 : 4}"/>`).join('');
-  const dots = xy.map(([x,y],i) => `<circle cx="${x}" cy="${y}" r="${highlight ? highlight.has(i) ? 5 : 3 : 7}" fill="${highlight?.has(i) ? GREEN : PURPLE}"/>`).join('');
+  const dots = xy.map(([x,y],i) => `<circle cx="${x}" cy="${y}" r="${highlight ? highlight.has(i) ? 5 : 3 : 7}" fill="${highlight?.has(i) ? GREEN : atoms ? atomColor(atoms[i]) : PURPLE}"/>`).join('');
   return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${highlight ? 'Motif trouvé en vert dans le graphe' : 'Dessin du motif à trouver'}">${lines}${dots}</svg>`;
 }
 function createGraph(element) {
-  const renderer = ForceGraph3D()(element).backgroundColor(palette.scene).showNavInfo(false).nodeLabel(n => `Point ${n.id+1}`)
-    .nodeRelSize(4.2).nodeVal(1.2).nodeResolution(16).nodeOpacity(1).linkOpacity(.65).linkWidth(1.3)
+  const renderer = ForceGraph3D()(element).backgroundColor(palette.scene).showNavInfo(false).nodeLabel(n => `${atomSymbol(n)} · ${ATOMS[atomSymbol(n)].name}`)
+    .nodeRelSize(4.2).nodeVal(1.2).nodeResolution(24).nodeOpacity(1).linkOpacity(.65).linkWidth(1.3)
     .enableNodeDrag(false).cooldownTicks(0);
   renderer.controls().staticMoving = true;
+  installAtomLabels(renderer, element);
   return renderer;
 }
 function fixedData(view) { return {nodes: view.nodes.map(n => ({...n, fx:n.x, fy:n.y, fz:n.z})), links: view.links.map(l => ({...l}))}; }
 function paint() {
-  graph.nodeColor(n => n.id === hovered ? palette.hover : selected.has(n.id) ? GREEN : PURPLE)
+  graph.nodeColor(n => n.id === hovered ? palette.hover : selected.has(n.id) ? GREEN : atomColor(n))
     .linkColor(l => selectedLink(l) ? GREEN : palette.edge).linkWidth(l => selectedLink(l) ? 3.5 : 1.2);
   $('selection').textContent = `${selected.size} / ${puzzle?.motif.points.length || 0} points sélectionnés`;
   controls();
@@ -156,7 +158,7 @@ function renderRecords() {
     const card = element('button', '', 'card');
     // Saved nodes are sorted by id; remap anyway so imported records stay coherent.
     const indices = new Map(view.nodes.map((n,i) => [n.id,i]));
-    card.innerHTML = svgMarkup(view.nodes.map(n=>[n.x,n.y]), view.links.map(l=>[indices.get(l.source),indices.get(l.target)]), new Set(best.selected.map(id=>indices.get(id))), 300,170);
+    card.innerHTML = svgMarkup(view.nodes.map(n=>[n.x,n.y]), view.links.map(l=>[indices.get(l.source),indices.get(l.target)]), new Set(best.selected.map(id=>indices.get(id))), 300,170,view.nodes);
     const body = element('div','','card-body'), name = element('strong',r.name);
     name.append(element('small',`${view.motif.name} · ${labels[r.level]} · ${r.mode === 'timed' ? 'Chrono' : 'Découverte'}`));
     body.append(name, element('span',seconds(best.seconds),'card-time')); card.append(body);
@@ -167,10 +169,10 @@ async function refreshRecords() { records = await api('records'); renderRecords(
 function openReplay(record) {
   $('replay-title').textContent = `${record.name} · ${record.best.puzzle.motif.name} en ${seconds(record.best.seconds)}`;
   $('replay-dialog').showModal();
-  if (replayGraph) replayGraph._destructor();
+  if (replayGraph) { removeAtomLabels(replayGraph); replayGraph._destructor(); }
   const chosen = new Set(record.best.selected);
   replaySelected = chosen;
-  replayGraph = createGraph($('replay-graph')).nodeColor(n=>chosen.has(n.id)?GREEN:PURPLE)
+  replayGraph = createGraph($('replay-graph')).nodeColor(n=>chosen.has(n.id)?GREEN:atomColor(n))
     .linkColor(l=>chosen.has(endpoint(l.source))&&chosen.has(endpoint(l.target))?GREEN:palette.edge)
     .linkWidth(l=>chosen.has(endpoint(l.source))&&chosen.has(endpoint(l.target))?3.5:1)
     .width($('replay-graph').clientWidth).height($('replay-graph').clientHeight).graphData(fixedData(record.best.puzzle));
@@ -195,7 +197,7 @@ function updateTheme(theme, remember = false) {
   }
   if (replayGraph) {
     replayGraph.backgroundColor(palette.scene)
-      .nodeColor(n => replaySelected.has(n.id) ? GREEN : PURPLE)
+      .nodeColor(n => replaySelected.has(n.id) ? GREEN : atomColor(n))
       .linkColor(l => replaySelected.has(endpoint(l.source)) && replaySelected.has(endpoint(l.target)) ? GREEN : palette.edge);
   }
   renderRecords();
@@ -203,7 +205,7 @@ function updateTheme(theme, remember = false) {
 $('theme-toggle').onclick = () => updateTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
 updateTheme(document.documentElement.dataset.theme);
 
-$('replay-dialog').addEventListener('close',()=>{ if(replayGraph){replayGraph._destructor(); replayGraph=null;} });
+$('replay-dialog').addEventListener('close',()=>{ if(replayGraph){removeAtomLabels(replayGraph); replayGraph._destructor(); replayGraph=null;} });
 $('close-replay').onclick = () => $('replay-dialog').close();
 $('close-result').onclick = () => $('result').close();
 $('start').onclick = () => action(start);

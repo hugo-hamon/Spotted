@@ -19,6 +19,7 @@ class GraphTests(unittest.TestCase):
                         copies = {frozenset(m) for m in matcher.subgraph_isomorphisms_iter()}
                         self.assertEqual(copies, {puzzle.solution})
                         self.assertEqual(len(puzzle.view['nodes']),len(puzzle.graph))
+                        self.assertEqual({n['element'] for n in puzzle.view['nodes']}, {'C','O','H','N'})
                         self.assertTrue(nx.is_biconnected(puzzle.graph))
                         if family == 'regular' or puzzle.diagnostics['fallback']:
                             self.assertEqual({d for _, d in puzzle.graph.degree()}, {3})

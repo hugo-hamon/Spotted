@@ -41,6 +41,11 @@ with tempfile.TemporaryDirectory() as directory:
             expect(page.locator('#next')).to_be_enabled(timeout=20000)
             page.evaluate("async()=>{window.graph=(await import('/js/index.js')).graph}")
             assert page.evaluate('graph.graphData().nodes.every(n=>n.x===n.fx && n.y===n.fy && n.z===n.fz)')
+            assert {n['element'] for n in puzzles[-1]['nodes']} == {'C','O','H','N'}
+            assert page.evaluate("new Set(graph.graphData().nodes.map(n=>graph.nodeColor()(n))).size") == 4
+            expect(page.locator('#graph-network .atom-labels')).to_have_count(1)
+            expect(page.locator('.atom-legend')).to_contain_text('Carbone')
+            expect(page.locator('.atom-legend')).to_contain_text('liens fictifs')
             page.wait_for_timeout(450)
             # Exercise actual WebGL picking, as well as the accessible controls.
             position=page.evaluate('''() => graph.graphData().nodes
@@ -202,10 +207,12 @@ with tempfile.TemporaryDirectory() as directory:
             expect(page.locator('.card')).to_have_count(1)
             expect(page.locator('.card strong')).to_contain_text('<Lynx & Co>')
             page.locator('#theme-toggle').click()
-            page.locator('.card').click(); expect(page.locator('#replay-dialog canvas')).to_be_visible()
+            page.locator('.card').click(); expect(page.locator('#replay-dialog canvas').first).to_be_visible()
             assert page.locator('#replay-dialog').evaluate('(el)=>getComputedStyle(el).backgroundColor') == 'rgb(43, 34, 53)'
             page.screenshot(path='/tmp/spotted-dark-gallery.png',full_page=True)
+            expect(page.locator('#replay-graph .atom-labels')).to_have_count(1)
             page.locator('#close-replay').click()
+            expect(page.locator('#replay-graph .atom-labels')).to_have_count(0)
             page.locator('#theme-toggle').click()
             # Timed session, server deadline, score save, and ranking.
             page.locator('#mode').select_option('timed'); page.locator('#start').click()
@@ -249,6 +256,7 @@ with tempfile.TemporaryDirectory() as directory:
             expect(page.locator('.ranking-row')).to_have_count(1)
             expect(page.locator('.ranking-row')).to_contain_text('ChronoLynx')
             assert len(json.loads(storage.read_text()))==2
+            assert all(n['element'] in {'C','O','H','N'} for r in json.loads(storage.read_text()) for n in r['best']['puzzle']['nodes'])
             page.locator('#mode').select_option('free')
             page.locator('#level').select_option('hard')
             page.locator('#start').click()

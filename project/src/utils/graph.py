@@ -208,6 +208,10 @@ def generate_puzzle(level='easy', target=None, family=None, seed=None, budget_ms
         # All nodes are treated alike; the motif receives no special placement.
         positions = {node: [x * 1.5, y * 1.5, z * 2.2]
                      for node, (x, y, z) in positions.items()}
-    view = {'nodes': [{'id': i, 'x': positions[i][0], 'y': positions[i][1], 'z': positions[i][2]} for i in sorted(graph)],
+    # Cosmetic identities are independent of the solution and stored with each
+    # snapshot. These cubic graphs do not encode chemical valence or molecules.
+    elements = (['C', 'C', 'O', 'H', 'N'] * (total // 5 + 1))[:total]
+    rng.shuffle(elements)
+    view = {'nodes': [{'id': i, 'element': element, 'x': positions[i][0], 'y': positions[i][1], 'z': positions[i][2]} for i, element in zip(sorted(graph), elements)],
             'links': [{'source': a, 'target': b} for a, b in graph.edges()], 'motif': motif_view(target)}
     return Puzzle(graph, target, solution, view, {'family': family, 'fallback': fallback, 'search_ms': round(search_ms, 3)})

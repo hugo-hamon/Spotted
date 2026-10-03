@@ -2,6 +2,8 @@
 
 Un jeu de repérage de motifs dans des graphes 3D pour la Fête de la science. Les points restent fixes ; on tourne la scène, on sélectionne des points et on valide leur structure. Une partie découverte démarre à l’ouverture.
 
+Les sommets sont représentés par des atomes : carbone (C, gris), oxygène (O, rouge), hydrogène (H, blanc) et azote (N, bleu). Leur symbole reste lisible pendant la rotation de la vue ; une petite légende rappelle les éléments. Cet habillage est illustratif : les liens sont fictifs et les graphes ne représentent pas des molécules chimiquement exactes. Seule la structure compte pour trouver le motif, indépendamment des éléments. Les atomes sont attribués sans tenir compte de la solution, conservés dans les enregistrements et affichés dans la galerie. Les anciennes parties reçoivent aussi un habillage compatible.
+
 ## Démarrer
 
 Python 3.12 et un navigateur avec WebGL sont nécessaires. Depuis la racine du projet :

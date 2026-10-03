@@ -10,11 +10,14 @@
 <body>
   <main>
     <div class="play-area">
-      <header><h1>Spotted</h1><p>Sélectionne les points qui forment le motif, sans lien supplémentaire entre eux. Glisse pour tourner · Clic droit pour annuler.</p><button id="theme-toggle" type="button" aria-label="Mode sombre" aria-pressed="false">☾ Mode sombre</button></header>
+      <header><h1>Spotted</h1><p>Sélectionne les atomes qui forment le motif. Glisse pour tourner · Clic droit pour annuler.</p><button id="theme-toggle" type="button" aria-label="Mode sombre" aria-pressed="false">☾ Mode sombre</button></header>
       <section class="game" aria-label="Recherche de motifs">
         <div class="toolbar"><div class="settings"><label>Modes <select id="mode"><option value="free">Découverte</option><option value="timed">Chrono</option></select></label><label>Difficulté <select id="level"><option value="easy">Facile</option><option value="medium">Moyen</option><option value="hard">Difficile</option></select></label><button id="start">Nouvelle partie</button></div><div class="stats"><span><b id="score">0</b> trouvé<span id="plural">s</span></span><span id="timer" aria-label="Temps restant">∞</span></div></div>
         <div class="stage"><div id="graph-network" aria-label="Graphe en trois dimensions"></div>
           <aside class="target"><h2 id="motif-name">Motif</h2><div id="motif"></div><span id="motif-count"></span></aside>
+          <div class="atom-legend" aria-label="Couleurs des atomes illustrés">
+            <span><b class="atom-c">C</b> Carbone</span><span><b class="atom-o">O</b> Oxygène</span><span><b class="atom-h">H</b> Hydrogène</span><span><b class="atom-n">N</b> Azote</span>
+          </div>
           <button id="recenter" aria-label="Recentrer le graphe">Recentrer</button>
           <div id="loading" hidden>Chargement…</div>
         </div>
