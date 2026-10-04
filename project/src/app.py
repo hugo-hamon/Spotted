@@ -31,14 +31,17 @@ class App:
     def eel_settings(self):
         return {'duration': self.config.game.duration_seconds}
 
-    def eel_start(self, mode, level):
-        return self.call(self.game.start, mode, level)
+    def eel_start(self, mode, level, skin='atoms'):
+        return self.call(self.game.start, mode, level, skin)
 
-    def eel_next(self, token, round_id):
-        return self.call(self.game.next, token, round_id)
+    def eel_next(self, token, round_id, skin=None):
+        return self.call(self.game.next, token, round_id, skin)
 
     def eel_validate(self, token, round_id, nodes):
         return self.call(self.game.validate, token, round_id, nodes)
+
+    def eel_hint(self, token, round_id):
+        return self.call(self.game.hint, token, round_id)
 
     def eel_finish(self, token):
         return self.call(self.game.finish, token)

@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import random
-from project.src.utils.graph import LEVELS, MOTIFS, motif_graph, planted_regular, occurrences, SearchBudgetExceeded
+from project.src.utils.graph import LEVELS, CUBIC_MOTIFS, motif_graph, planted_regular, occurrences, SearchBudgetExceeded
 
 
 def main():
@@ -10,7 +10,7 @@ def main():
     bank = {}
     for total, _ in LEVELS.values():
         bank[str(total)] = {}
-        for target in MOTIFS:
+        for target in CUBIC_MOTIFS:
             motif = motif_graph(target)
             records = []
             tried = 0

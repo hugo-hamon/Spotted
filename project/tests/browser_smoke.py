@@ -40,12 +40,20 @@ with tempfile.TemporaryDirectory() as directory:
             expect(page.locator('#motif-name')).not_to_have_text('Motif', timeout=20000)
             expect(page.locator('#next')).to_be_enabled(timeout=20000)
             page.evaluate("async()=>{window.graph=(await import('/js/index.js')).graph}")
+            expect(page.locator('#mode')).to_have_value('guided')
+            expect(page.locator('#status')).to_contain_text('points dorés')
+            guided_count = page.evaluate("graph.graphData().nodes.filter(n=>graph.nodeColor()(n)==='#e6a323').length")
+            assert guided_count == len(puzzles[-1]['motif']['points'])
+            page.locator('#hint').click()
+            expect(page.locator('#hint')).to_have_text('Indice 1 / 3')
+            page.screenshot(path='/tmp/spotted-guided.png',full_page=True)
+            page.locator('#mode').select_option('free'); page.locator('#start').click()
+            expect(page.locator('#next')).to_be_enabled()
             assert page.evaluate('graph.graphData().nodes.every(n=>n.x===n.fx && n.y===n.fy && n.z===n.fz)')
             assert {n['element'] for n in puzzles[-1]['nodes']} == {'C','O','H','N'}
             assert page.evaluate("new Set(graph.graphData().nodes.map(n=>graph.nodeColor()(n))).size") == 4
             expect(page.locator('#graph-network .atom-labels')).to_have_count(1)
             expect(page.locator('.atom-legend')).to_contain_text('Carbone')
-            expect(page.locator('.atom-legend')).to_contain_text('liens fictifs')
             page.wait_for_timeout(450)
             # Exercise actual WebGL picking, as well as the accessible controls.
             position=page.evaluate('''() => graph.graphData().nodes
@@ -145,7 +153,9 @@ with tempfile.TemporaryDirectory() as directory:
                 }""", node_id)
                 assert point is not None, node_id
                 bounds=page.locator('#graph-network').bounding_box()
+                camera_before_click=page.evaluate('graph.cameraPosition()')
                 page.mouse.click(bounds['x']+point['x'],bounds['y']+point['y'])
+                return camera_before_click
 
             def selected_nodes():
                 return page.evaluate("graph.graphData().nodes.filter(n=>graph.nodeColor()(n)==='#159447').map(n=>n.id)")
@@ -181,6 +191,82 @@ with tempfile.TemporaryDirectory() as directory:
                     expect(page.locator('#status')).to_contain_text('Repéré en')
                 return found
 
+            # Progressive hints are cumulative and reset with the next round.
+            for level in (1,2,3):
+                page.locator('#hint').click()
+                expect(page.locator('#hint')).to_have_text(f'Indice {level} / 3')
+            expect(page.locator('#hint')).to_be_disabled()
+            assert page.evaluate("graph.graphData().nodes.filter(n=>graph.nodeColor()(n)==='#e6a323').length") == len(puzzles[-1]['motif']['points'])
+            page.locator('#next').click(); expect(page.locator('#next')).to_be_enabled()
+            expect(page.locator('#hint')).to_have_text('Indice')
+            # Metro loads a new planar round with fixed orientation.
+            click_node(0)
+            previous = len(puzzles)
+            page.locator('#skin').select_option('metro')
+            expect(page.locator('.metro-legend')).to_be_visible()
+            expect(page.locator('#graph-network .atom-labels')).to_have_attribute('data-skin','metro')
+            expect(page.locator('#next')).to_be_enabled()
+            assert selected_nodes() == []
+            assert len(puzzles) == previous+1
+            assert page.evaluate('graph.graphData().nodes.every(n=>n.z===0)')
+            assert page.evaluate('graph.controls().noRotate')
+            assert page.evaluate('graph.nodeVisibility()') is False
+            assert page.evaluate('graph.linkVisibility()') is False
+            direction = page.evaluate('graph.camera().getWorldDirection(graph.camera().position.clone()).toArray()')
+            page.mouse.move(box['x']+40,box['y']+100)
+            page.mouse.down(); page.mouse.move(box['x']+95,box['y']+135,steps=8); page.mouse.up()
+            after_direction = page.evaluate('graph.camera().getWorldDirection(graph.camera().position.clone()).toArray()')
+            assert max(abs(a-b) for a,b in zip(direction,after_direction)) < 1e-9, (direction,after_direction)
+            page.locator('#recenter').click()
+            click_node(0)
+            assert selected_nodes() == [0]
+            page.locator('#clear').click()
+            page.locator('#recenter').click()
+            overlay = page.locator('#graph-network .atom-labels')
+            animation_frame = overlay.evaluate('(c)=>c.toDataURL()')
+            page.wait_for_timeout(200)
+            assert overlay.evaluate('(c)=>c.toDataURL()') != animation_frame
+            page.emulate_media(reduced_motion='reduce')
+            page.wait_for_timeout(100)
+            animation_frame = overlay.evaluate('(c)=>c.toDataURL()')
+            page.wait_for_timeout(200)
+            assert overlay.evaluate('(c)=>c.toDataURL()') == animation_frame
+            page.emulate_media(reduced_motion='no-preference')
+            page.screenshot(path='/tmp/spotted-metro.png',full_page=True)
+            page.locator('#level').select_option('hard'); page.locator('#start').click()
+            expect(page.locator('#next')).to_be_enabled(timeout=15000)
+            assert len(puzzles[-1]['nodes'])==60
+            assert page.evaluate('graph.graphData().nodes.every(n=>n.z===0)')
+            assert page.evaluate('graph.controls().noRotate')
+            page.wait_for_timeout(150)
+            page.screenshot(path='/tmp/spotted-metro-hard.png',full_page=True)
+            page.locator('#level').select_option('easy'); page.locator('#start').click()
+            expect(page.locator('#next')).to_be_enabled()
+            page.locator('#skin').select_option('atoms')
+            expect(page.locator('#next')).to_be_enabled()
+            assert not page.evaluate('graph.controls().noRotate')
+            # Validation remains actionable with too few points. Extra clicks
+            # visibly select nodes and explain how to correct the count.
+            page.locator('#validate').click()
+            expect(page.locator('#status')).to_contain_text('Il manque encore')
+            count=len(puzzles[-1]['motif']['points'])
+            for node in range(count+2): camera_before_extra=click_node(node)
+            page.wait_for_timeout(100)
+            assert page.evaluate('graph.cameraPosition()') == camera_before_extra
+            expect(page.locator('#selection')).to_contain_text(f'{count+2} / {count}')
+            expect(page.locator('#selection-help')).to_contain_text('2 points en trop')
+            assert len(selected_nodes()) == count+2
+            page.locator('#validate').click()
+            expect(page.locator('#selection-help')).to_be_visible()
+            expect(page.locator('#score')).to_have_text('0')
+            page.screenshot(path='/tmp/spotted-selection-overflow.png',full_page=True)
+            page.mouse.click(box['x']+25,box['y']+25,button='right')
+            expect(page.locator('#selection-help')).to_contain_text('1 point en trop')
+            click_node(count)
+            expect(page.locator('#selection-help')).to_be_hidden()
+            expect(page.locator('#validate')).to_have_class('primary ready')
+            page.locator('#clear').click()
+            expect(page.locator('#selection-help')).to_be_hidden()
             # Wrong full selection, then clear and solve through actual node clicks.
             view=puzzles[-1]
             from itertools import combinations
@@ -192,6 +278,10 @@ with tempfile.TemporaryDirectory() as directory:
             page.locator('#clear').click()
             solve(); expect(page.locator('#score')).to_have_text('1')
             expect(page.locator('#validate')).to_be_disabled()
+            page.wait_for_timeout(100)
+            assert page.evaluate("graph.graphData().nodes.some(n=>n.__threeObj.material.opacity < .2)")
+            assert page.evaluate("graph.graphData().nodes.filter(n=>n.__threeObj.material.opacity === 1).length") == len(puzzles[-1]['motif']['points'])
+            assert page.evaluate("graph.graphData().links.some(l=>l.__lineObj.material.opacity < .1)")
             page.screenshot(path='/tmp/spotted-solved.png',full_page=True)
             previous=len(puzzles)
             page.locator('#next').click()
@@ -220,6 +310,8 @@ with tempfile.TemporaryDirectory() as directory:
             expect(page.locator('#next')).to_be_enabled()
             expect(page.locator('#mode')).to_be_disabled()
             expect(page.locator('#next')).to_have_text('Passer (−10 s)')
+            expect(page.locator('#hint')).to_be_hidden()
+            expect(page.locator('#skin')).to_be_disabled()
             previous=len(puzzles)
             before_time=page.locator('#timer').inner_text()
             page.locator('#next').click()
@@ -241,6 +333,15 @@ with tempfile.TemporaryDirectory() as directory:
             expect(page.locator('#status')).to_contain_text('Pas encore')
             assert len(puzzles)==previous
             expect(page.locator('#score')).to_have_text('0')
+            extra=next(n['id'] for n in view['nodes'] if n['id'] not in wrong)
+            click_node(extra)
+            expect(page.locator('#selection-help')).to_contain_text('1 point en trop')
+            expect(page.locator('#selection')).to_contain_text(f'{len(motif)+1} /')
+            page.mouse.click(box['x']+25,box['y']+25,button='right')
+            expect(page.locator('#selection-help')).to_be_hidden()
+            expect(page.locator('#status')).to_contain_text('Pas encore')
+            expect(page.locator('#next')).to_be_enabled()
+            assert len(puzzles)==previous
             page.mouse.click(box['x']+25,box['y']+25,button='right')
             expect(page.locator('#selection')).to_contain_text(f'{len(motif)-1} /')
             page.locator('#clear').click()
@@ -262,23 +363,52 @@ with tempfile.TemporaryDirectory() as directory:
             page.locator('#start').click()
             expect(page.locator('#next')).to_be_enabled()
             assert len(puzzles[-1]['nodes']) == 60
-            assert len(puzzles[-1]['links']) == 90
+            assert 59 <= len(puzzles[-1]['links']) <= 120
             assert page.evaluate('graph.graphData().nodes.length') == 60
             page.wait_for_timeout(400)
             page.screenshot(path='/tmp/spotted-hard.png',full_page=True)
+            page.locator('#mode').select_option('guided')
+            page.locator('#level').select_option('easy')
+            page.locator('#start').click(); expect(page.locator('#next')).to_be_enabled()
+            solve()
+            page.wait_for_timeout(100)
+            assert page.evaluate("graph.graphData().nodes.some(n=>n.__threeObj.material.opacity < .2)")
             page.locator('#theme-toggle').click()
+            page.locator('#skin').select_option('metro')
+            expect(page.locator('#next')).to_be_enabled()
             page.reload(wait_until='networkidle')
+            expect(page.locator('#skin')).to_have_value('metro')
             expect(page.locator('html')).to_have_attribute('data-theme','dark')
             expect(page.locator('#theme-toggle')).to_have_attribute('aria-pressed','true')
-            expect(page.locator('.ranking-row')).to_have_count(1)
+            expect(page.locator('.ranking-row')).to_have_count(0)
+            expect(page.locator('#next')).to_be_enabled()
+            page.evaluate("async()=>{window.graph=(await import('/js/index.js')).graph}")
+            box=page.locator('#graph-network').bounding_box()
+            solve()
+            page.locator('#finish').click()
+            page.locator('#name').fill('Métro')
+            page.locator('#save-form button').click()
+            expect(page.locator('#save-status')).to_contain_text('enregistrée')
+            saved=json.loads(storage.read_text())[-1]['best']['puzzle']
+            assert saved['skin']=='metro' and all(n['z']==0 for n in saved['nodes'])
+            page.locator('#close-result').click(); page.locator('#gallery-tab').click()
+            page.locator('.card').first.click()
+            expect(page.locator('#replay-graph .atom-labels')).to_have_attribute('data-skin','metro')
+            page.screenshot(path='/tmp/spotted-metro-replay.png',full_page=True)
+            page.locator('#close-replay').click()
             page.set_viewport_size({'width':390,'height':844})
             page.wait_for_timeout(450)
             page.screenshot(path='/tmp/spotted-mobile.png',full_page=True)
+            target_box=page.locator('.target').bounding_box()
+            graph_box=page.locator('#graph-network').bounding_box()
+            assert target_box['y']+target_box['height'] <= graph_box['y']
+            assert page.locator('#next').bounding_box()['height'] >= 44
+            assert page.locator('#validate').bounding_box()['height'] >= 44
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
             assert not errors,errors
             assert not external,external
             browser.close()
-            print('Browser checks passed: fixed 3D, instant/tolerant mouse picking, touch, right-click undo, drag distinction, selection/edges, automatic timed validation and next puzzle, editable wrong answers, skip penalty, timer, persistent dark mode, safe names, gallery 3D, mobile, offline assets.')
+            print('Browser checks passed: guided/free/timed modes, progressive hints, solution opacity, animated metro and reduced motion, skin persistence, mouse/touch picking, undo, automatic timed validation, skip penalty, dark mode, records, gallery, mobile, offline assets.')
     finally:
         process.terminate()
         process.wait(timeout=5)

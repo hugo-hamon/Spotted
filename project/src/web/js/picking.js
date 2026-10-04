@@ -19,7 +19,7 @@ export function installPicking(element, graph, {select, undo, hover}) {
       if (depth <= camera.near || depth >= camera.far) continue;
       const p = graph.graph2ScreenCoords(node.x, node.y, node.z);
       const value = graph.nodeVal();
-      const radius = graph.nodeRelSize() * Math.cbrt(typeof value === 'function' ? value(node) : value) * projectionScale / depth;
+      const radius = graph.graphData().skin === 'metro' ? 14 : graph.nodeRelSize() * Math.cbrt(typeof value === 'function' ? value(node) : value) * projectionScale / depth;
       const distance = Math.hypot(p.x - x, p.y - y);
       const tolerance = Math.max(event.pointerType === 'touch' ? 24 : 18, radius + 6);
       if (distance <= tolerance) hits.push({id: node.id, depth, distance, inside: distance <= radius});

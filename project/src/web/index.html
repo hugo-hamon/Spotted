@@ -1,33 +1,93 @@
 <!doctype html>
 <html lang="fr">
+
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#efebf4"><title>Spotted</title>
-  <link rel="icon" href="assets/favicon.svg"><link rel="stylesheet" href="css/index.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#efebf4">
+  <title>Spotted</title>
+  <link rel="icon" href="assets/favicon.svg">
+  <link rel="stylesheet" href="css/index.css">
   <script src="js/theme-init.js"></script>
-  <script src="/eel.js"></script><script src="vendor/3d-force-graph.min.js"></script>
+  <script src="/eel.js"></script>
+  <script src="vendor/3d-force-graph.min.js"></script>
 </head>
+
 <body>
   <main>
     <div class="play-area">
-      <header><h1>Spotted</h1><p>Sélectionne les atomes qui forment le motif. Glisse pour tourner · Clic droit pour annuler.</p><button id="theme-toggle" type="button" aria-label="Mode sombre" aria-pressed="false">☾ Mode sombre</button></header>
+      <header>
+        <h1>Spotted</h1>
+        <p id="instructions">Sélectionne les points qui forment le motif. Glisse pour tourner · Clic droit pour annuler.
+        </p><button id="theme-toggle" type="button" aria-label="Mode sombre" aria-pressed="false">☾ Mode sombre</button>
+      </header>
       <section class="game" aria-label="Recherche de motifs">
-        <div class="toolbar"><div class="settings"><label>Modes <select id="mode"><option value="free">Découverte</option><option value="timed">Chrono</option></select></label><label>Difficulté <select id="level"><option value="easy">Facile</option><option value="medium">Moyen</option><option value="hard">Difficile</option></select></label><button id="start">Nouvelle partie</button></div><div class="stats"><span><b id="score">0</b> trouvé<span id="plural">s</span></span><span id="timer" aria-label="Temps restant">∞</span></div></div>
-        <div class="stage"><div id="graph-network" aria-label="Graphe en trois dimensions"></div>
-          <aside class="target"><h2 id="motif-name">Motif</h2><div id="motif"></div><span id="motif-count"></span></aside>
+        <div class="toolbar">
+          <div class="settings"><label>Modes <select id="mode">
+                <option value="guided">Découverte</option>
+                <option value="free">Libre</option>
+                <option value="timed">Chrono</option>
+              </select></label><label>Difficulté <select id="level">
+                <option value="easy">Facile</option>
+                <option value="medium">Moyen</option>
+                <option value="hard">Difficile</option>
+              </select></label><label>Thème <select id="skin">
+                <option value="atoms">Atomes</option>
+                <option value="metro">Métro</option>
+              </select></label><button id="start" class="primary">Nouvelle partie</button></div>
+          <div class="stats"><span><b id="score">0</b> trouvé<span id="plural">s</span></span><span id="timer"
+              aria-label="Temps restant">∞</span></div>
+        </div>
+        <div class="stage">
+          <div id="graph-network" aria-label="Graphe en trois dimensions"></div>
+          <aside class="target" aria-label="Motif à trouver">
+            <span class="target-label">À trouver</span>
+            <h2 id="motif-name">Motif</h2>
+            <div id="motif"></div><span id="motif-count"></span>
+          </aside>
           <div class="atom-legend" aria-label="Couleurs des atomes illustrés">
-            <span><b class="atom-c">C</b> Carbone</span><span><b class="atom-o">O</b> Oxygène</span><span><b class="atom-h">H</b> Hydrogène</span><span><b class="atom-n">N</b> Azote</span>
+            <span><b class="atom-c">C</b> Carbone</span><span><b class="atom-o">O</b> Oxygène</span><span><b
+                class="atom-h">H</b> Hydrogène</span><span><b class="atom-n">N</b> Azote</span>
           </div>
+          <div class="metro-legend" hidden><span><b>Ⓜ</b> Plan du métro</span><small>Stations Ⓜ · lignes
+              colorées</small></div>
           <button id="recenter" aria-label="Recentrer le graphe">Recentrer</button>
           <div id="loading" hidden>Chargement…</div>
         </div>
-        <div class="actionbar"><div class="feedback"><span id="selection">0 point sélectionné</span><span id="status" role="status" aria-live="polite"></span></div><div class="actions"><button id="clear">Effacer</button><button id="next">Nouveau</button><button id="validate" class="primary">Valider</button><button id="finish">Terminer</button></div></div>
+        <div class="actionbar">
+          <div class="feedback"><span id="selection">0 point sélectionné</span><span id="status" role="status"
+              aria-live="polite"></span><span id="selection-help" role="status" aria-live="polite" aria-atomic="true" hidden></span></div>
+          <div class="actions"><button id="hint">Indice</button><button id="clear">Effacer</button><button
+              id="next">Nouveau</button><button id="validate" class="primary" aria-describedby="selection-help">Valider</button><button
+              id="finish">Terminer</button></div>
+        </div>
       </section>
     </div>
-    <section class="community"><div class="tabs" role="tablist" aria-label="Résultats"><button id="scores-tab" role="tab" aria-selected="true" aria-controls="scores-panel">Classement</button><button id="gallery-tab" role="tab" aria-selected="false" aria-controls="gallery-panel">Galerie</button></div><div id="scores-panel" role="tabpanel" aria-labelledby="scores-tab"><p class="subtle" id="ranking-label"></p><div id="scores"></div></div><div id="gallery-panel" role="tabpanel" aria-labelledby="gallery-tab" hidden><div id="gallery" class="gallery"></div></div></section>
+    <section class="community">
+      <div class="tabs" role="tablist" aria-label="Résultats"><button id="scores-tab" role="tab" aria-selected="true"
+          aria-controls="scores-panel">Classement</button><button id="gallery-tab" role="tab" aria-selected="false"
+          aria-controls="gallery-panel">Galerie</button></div>
+      <div id="scores-panel" role="tabpanel" aria-labelledby="scores-tab">
+        <p class="subtle" id="ranking-label"></p>
+        <div id="scores"></div>
+      </div>
+      <div id="gallery-panel" role="tabpanel" aria-labelledby="gallery-tab" hidden>
+        <div id="gallery" class="gallery"></div>
+      </div>
+    </section>
   </main>
-  <dialog id="result"><button class="dialog-close" id="close-result" aria-label="Fermer">×</button><h2 id="result-title">Résultat</h2><p id="result-text"></p><form id="save-form"><label for="name">Pseudo</label><input id="name" maxlength="24" required autocomplete="off"><button class="primary" type="submit">Enregistrer</button></form><p id="save-status" role="status"></p><button id="replay">Rejouer</button></dialog>
-  <dialog id="replay-dialog"><button id="close-replay" class="dialog-close" aria-label="Fermer">×</button><h2 id="replay-title"></h2><div id="replay-graph"></div></dialog>
+  <dialog id="result"><button class="dialog-close" id="close-result" aria-label="Fermer">×</button>
+    <h2 id="result-title">Résultat</h2>
+    <p id="result-text"></p>
+    <form id="save-form"><label for="name">Pseudo</label><input id="name" maxlength="24" required
+        autocomplete="off"><button class="primary" type="submit">Enregistrer</button></form>
+    <p id="save-status" role="status"></p><button id="replay">Rejouer</button>
+  </dialog>
+  <dialog id="replay-dialog"><button id="close-replay" class="dialog-close" aria-label="Fermer">×</button>
+    <h2 id="replay-title"></h2>
+    <div id="replay-graph"></div>
+  </dialog>
   <script type="module" src="js/index.js"></script>
 </body>
+
 </html>

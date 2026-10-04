@@ -3,7 +3,7 @@ open_browser_on_start = false
 port = 8000
 
 [game]
-duration_seconds = 120
+duration_seconds = 60
 uniqueness_budget_ms = 150
 generation_attempts = 5
 storage_file = "data/scores.json"

@@ -1,3 +1,4 @@
+import { METRO_COLORS } from './metro.js';
 import { ATOMS, atomSymbol, atomColor, installAtomLabels, removeAtomLabels } from './atoms.js';
 import { installPicking } from './picking.js';
 const $ = id => document.getElementById(id);
@@ -12,6 +13,13 @@ const selected = new Set();
 let state = null, puzzle = null, graph, busy = false, deadline = null, duration = 120, records = [], hovered = null, replayGraph = null;
 let activeMode = 'free', activeLevel = 'easy';
 let replaySelected = new Set();
+let skin = 'atoms';
+try { if (localStorage.getItem('spotted-skin') === 'metro') skin = 'metro'; } catch (_) {}
+const HINT = '#e6a323';
+const metroColors = METRO_COLORS;
+const baseColor = (n, kind = skin) => kind === 'metro' ? '#675677' : atomColor(n);
+const alpha = (hex, opacity) => `rgba(${[1,3,5].map(i => parseInt(hex.slice(i,i+2),16)).join(',')},${opacity})`;
+const focused = () => Boolean(state?.solved && activeMode !== 'timed');
 const seconds = n => `${Number(n).toFixed(1).replace('.', ',')} s`;
 const endpoint = x => typeof x === 'object' ? x.id : x;
 const selectedLink = l => selected.has(endpoint(l.source)) && selected.has(endpoint(l.target));
@@ -23,14 +31,25 @@ function frameGraph(view = graph) {
   const [x, y, z] = bounds.map(([low, high]) => (low + high) / 2);
   const vertical = Math.tan(view.camera().fov * Math.PI / 360);
   const horizontal = vertical * view.width() / view.height();
+  // Leave room for station names and the motif card on the flat map.
+  const metro = view.graphData().skin === 'metro';
   const distance = Math.max(...nodes.map(n => n.z - z + Math.max(
-    (Math.abs(n.x - x) + 7) / (horizontal * .87),
-    (Math.abs(n.y - y) + 7) / (vertical * .86)
+    (Math.abs(n.x - x) + 7) / (horizontal * (metro ? .74 : .87)),
+    (Math.abs(n.y - y) + 7) / (vertical * (metro ? .74 : .86))
   )));
   view.controls().reset();
   view.camera().up.set(0, 1, 0);
   view.cameraPosition({x, y, z: z + distance}, {x, y, z}, 0);
   view.controls().update();
+}
+
+function configureView(view) {
+  const metro = view.graphData().skin === 'metro';
+  // Metro is drawn entirely in the 2D canvas. Keep the shared projection
+  // camera stable; switching the force engine dimensions discards z mid-frame.
+  view.nodeVisibility(!metro).linkVisibility(!metro);
+  view.controls().noRotate = metro;
+  view.controls().mouseButtons.LEFT = metro ? 2 : 0;
 }
 
 async function api(name, ...args) {
@@ -48,55 +67,83 @@ async function action(fn) {
 function controls() {
   const locked = busy || !state || state.finished;
   $('validate').hidden = activeMode === 'timed';
-  $('validate').disabled = locked || state?.solved || selected.size !== puzzle?.motif.points.length;
+  $('validate').disabled = locked || state?.solved;
+  $('validate').classList.toggle('ready', !locked && !state?.solved && selected.size === puzzle?.motif.points.length);
   $('clear').disabled = locked || state?.solved || selected.size === 0;
+  $('hint').hidden = activeMode === 'timed';
+  $('hint').disabled = locked || state?.solved || state?.hint_level >= 3;
+  $('hint').textContent = state?.hint_level ? `Indice ${state.hint_level} / 3` : 'Indice';
   $('next').disabled = locked;
   $('next').textContent = state?.solved ? 'Suivant' : activeMode === 'timed' ? 'Passer (−10 s)' : 'Nouveau';
+  $('next').classList.toggle('next-step', Boolean(state?.solved));
   $('finish').disabled = locked;
   $('start').disabled = busy;
   const timed = state && !state.finished && activeMode === 'timed';
+  $('skin').disabled = busy || timed;
   $('mode').disabled = busy || timed;
   $('level').disabled = busy || timed;
   $('start').disabled = busy || timed;
   $('save-form').querySelector('button').disabled = busy;
   $('replay').disabled = busy;
 }
-function svgMarkup(points, edges, highlight = null, width = 180, height = 150, atoms = null) {
+function svgMarkup(points, edges, highlight = null, width = 180, height = 150, atoms = null, kind = 'atoms') {
   const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
   const minX = Math.min(...xs), minY = Math.min(...ys), dx = Math.max(...xs) - minX || 1, dy = Math.max(...ys) - minY || 1;
   const scale = Math.min((width - 36) / dx, (height - 36) / dy);
   const xy = points.map(([x,y]) => [(width - dx * scale) / 2 + (x-minX)*scale, (height-dy*scale)/2+(y-minY)*scale]);
   const lines = edges.map(([a,b]) => `<line x1="${xy[a][0]}" y1="${xy[a][1]}" x2="${xy[b][0]}" y2="${xy[b][1]}" stroke="${highlight ? highlight.has(a) && highlight.has(b) ? GREEN : palette.edge : PURPLE}" stroke-width="${highlight ? 2 : 4}"/>`).join('');
-  const dots = xy.map(([x,y],i) => `<circle cx="${x}" cy="${y}" r="${highlight ? highlight.has(i) ? 5 : 3 : 7}" fill="${highlight?.has(i) ? GREEN : atoms ? atomColor(atoms[i]) : PURPLE}"/>`).join('');
+  const dots = xy.map(([x,y],i) => `<circle cx="${x}" cy="${y}" r="${highlight ? highlight.has(i) ? 5 : 3 : 7}" fill="${highlight?.has(i) ? GREEN : atoms ? baseColor(atoms[i], kind) : PURPLE}"/>`).join('');
   return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${highlight ? 'Motif trouvé en vert dans le graphe' : 'Dessin du motif à trouver'}">${lines}${dots}</svg>`;
 }
 function createGraph(element) {
-  const renderer = ForceGraph3D()(element).backgroundColor(palette.scene).showNavInfo(false).nodeLabel(n => `${atomSymbol(n)} · ${ATOMS[atomSymbol(n)].name}`)
+  const renderer = ForceGraph3D()(element).backgroundColor(palette.scene).showNavInfo(false).nodeLabel(n => renderer.graphData().skin === 'metro' ? n.station : `${atomSymbol(n)} · ${ATOMS[atomSymbol(n)].name}`)
     .nodeRelSize(4.2).nodeVal(1.2).nodeResolution(24).nodeOpacity(1).linkOpacity(.65).linkWidth(1.3)
     .enableNodeDrag(false).cooldownTicks(0);
   renderer.controls().staticMoving = true;
-  installAtomLabels(renderer, element);
+  const main = element === $('graph-network');
+  installAtomLabels(renderer, element, {
+    skin: () => renderer.graphData().skin || 'atoms',
+    opacity: n => main && focused() && !selected.has(n.id) ? .12 : 1,
+    hinted: n => main && !state?.solved && (state?.hint_nodes || []).includes(n.id),
+    animate: () => !main || !focused(),
+  });
   return renderer;
 }
-function fixedData(view) { return {nodes: view.nodes.map(n => ({...n, fx:n.x, fy:n.y, fz:n.z})), links: view.links.map(l => ({...l}))}; }
+function fixedData(view) { return {skin: view.skin || 'atoms', nodes: view.nodes.map(n => ({...n, fx:n.x, fy:n.y, fz:n.z})), links: view.links.map(l => ({...l}))}; }
 function paint() {
-  graph.nodeColor(n => n.id === hovered ? palette.hover : selected.has(n.id) ? GREEN : atomColor(n))
-    .linkColor(l => selectedLink(l) ? GREEN : palette.edge).linkWidth(l => selectedLink(l) ? 3.5 : 1.2);
+  const hints = new Set(state?.hint_nodes || []), guide = new Set(state?.guided_nodes || []);
+  const assisted = n => hints.has(n) || guide.has(n);
+  const assistedLink = l => assisted(endpoint(l.source)) && assisted(endpoint(l.target));
+  graph.nodeColor(n => {
+    if (focused()) return selected.has(n.id) ? GREEN : alpha(baseColor(n), .12);
+    return n.id === hovered ? palette.hover : selected.has(n.id) ? GREEN : assisted(n.id) ? HINT : baseColor(n);
+  }).linkColor(l => selectedLink(l) ? GREEN : focused() ? alpha(palette.edge, .1) : assistedLink(l) ? HINT : skin === 'metro' ? metroColors[l.line % metroColors.length] : palette.edge)
+    .linkWidth(l => selectedLink(l) || (!state?.solved && assistedLink(l)) ? 3.5 : skin === 'metro' ? 2.5 : 1.2);
   $('selection').textContent = `${selected.size} / ${puzzle?.motif.points.length || 0} points sélectionnés`;
+  const extra = selected.size - (puzzle?.motif.points.length || 0);
+  const overflow = extra > 0 && !state?.finished && !state?.solved;
+  $('selection').classList.toggle('overflow', overflow);
+  const help = overflow ? `${extra} point${extra > 1 ? 's' : ''} en trop. Reclique sur un point sélectionné pour le retirer.` : '';
+  if ($('selection-help').textContent !== help) $('selection-help').textContent = help;
+  $('selection-help').hidden = !overflow;
+  document.querySelector('.target').classList.toggle('solved', Boolean(state?.solved));
+  document.querySelector('.target-label').textContent = state?.solved ? 'Trouvé !' : 'À trouver';
   controls();
+}
+function selectionChanged() {
+  paint(); status('');
+  if (activeMode === 'timed' && selected.size === puzzle.motif.points.length) action(validateSelection);
 }
 function toggle(id) {
   if (busy || !state || state.finished || state.solved) return;
   if (selected.has(id)) selected.delete(id);
-  else if (selected.size < puzzle.motif.points.length) selected.add(id);
-  else { status('Désélectionne un point pour en choisir un autre.'); return; }
-  paint(); status('');
-  if (activeMode === 'timed' && selected.size === puzzle.motif.points.length) action(validateSelection);
+  else selected.add(id);
+  selectionChanged();
 }
 function undoSelection() {
   if (busy || !state || state.finished || state.solved || !selected.size) return;
   selected.delete([...selected].at(-1));
-  paint(); status('');
+  selectionChanged();
 }
 function apply(response) {
   state = response;
@@ -106,19 +153,20 @@ function apply(response) {
   if (response.puzzle && !state.finished) {
     puzzle = response.puzzle; selected.clear(); hovered = null;
     graph.nodeRelSize(activeLevel === 'easy' ? 5.5 : 4.2).graphData(fixedData(puzzle));
+    configureView(graph);
     graph.cameraPosition({x:0,y:0,z:420}, {x:0,y:0,z:0}, 0);
     requestAnimationFrame(() => frameGraph(graph));
     $('motif').innerHTML = svgMarkup(puzzle.motif.points, puzzle.motif.edges);
     $('motif-name').textContent = puzzle.motif.name;
     $('motif-count').textContent = `${puzzle.motif.points.length} points · ${puzzle.motif.edges.length} liens`;
-    status('');
+    status(activeMode === 'guided' ? 'Sélectionne les points dorés, puis valide.' : '');
   }
   paint(); tick();
 }
 async function start() {
   $('result').close(); $('loading').hidden = false;
   const mode = $('mode').value, level = $('level').value;
-  const result = await api('start', mode, level);
+  const result = await api('start', mode, level, skin);
   activeMode = mode; activeLevel = level;
   apply(result); renderRecords();
 }
@@ -141,9 +189,9 @@ function tick() {
 function element(tag, text, className) { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; return el; }
 function renderRecords() {
   const level = $('level').value;
-  const ranked = records.filter(r => r.mode === 'timed' && r.level === level && r.duration === duration)
+  const ranked = records.filter(r => r.mode === 'timed' && r.level === level && r.duration === duration && (r.skin || 'atoms') === skin)
     .sort((a,b) => b.score-a.score || a.best.seconds-b.best.seconds).slice(0,10);
-  $('ranking-label').textContent = `${labels[level]} · ${duration} s · Top 10`;
+  $('ranking-label').textContent = `${labels[level]} · ${skin === 'metro' ? 'Métro' : 'Atomes'} · ${duration} s · Top 10`;
   $('scores').replaceChildren();
   if (!ranked.length) $('scores').append(element('div', 'Aucun score enregistré.', 'empty'));
   ranked.forEach((r,i) => {
@@ -158,9 +206,9 @@ function renderRecords() {
     const card = element('button', '', 'card');
     // Saved nodes are sorted by id; remap anyway so imported records stay coherent.
     const indices = new Map(view.nodes.map((n,i) => [n.id,i]));
-    card.innerHTML = svgMarkup(view.nodes.map(n=>[n.x,n.y]), view.links.map(l=>[indices.get(l.source),indices.get(l.target)]), new Set(best.selected.map(id=>indices.get(id))), 300,170,view.nodes);
+    card.innerHTML = svgMarkup(view.nodes.map(n=>[n.x,n.y]), view.links.map(l=>[indices.get(l.source),indices.get(l.target)]), new Set(best.selected.map(id=>indices.get(id))), 300,170,view.nodes,view.skin || 'atoms');
     const body = element('div','','card-body'), name = element('strong',r.name);
-    name.append(element('small',`${view.motif.name} · ${labels[r.level]} · ${r.mode === 'timed' ? 'Chrono' : 'Découverte'}`));
+    name.append(element('small',`${view.motif.name} · ${labels[r.level]} · ${{timed:'Chrono',free:'Libre',guided:'Découverte'}[r.mode] || 'Libre'}`));
     body.append(name, element('span',seconds(best.seconds),'card-time')); card.append(body);
     card.onclick = () => openReplay(r); $('gallery').append(card);
   });
@@ -172,10 +220,11 @@ function openReplay(record) {
   if (replayGraph) { removeAtomLabels(replayGraph); replayGraph._destructor(); }
   const chosen = new Set(record.best.selected);
   replaySelected = chosen;
-  replayGraph = createGraph($('replay-graph')).nodeColor(n=>chosen.has(n.id)?GREEN:atomColor(n))
-    .linkColor(l=>chosen.has(endpoint(l.source))&&chosen.has(endpoint(l.target))?GREEN:palette.edge)
+  replayGraph = createGraph($('replay-graph')).nodeColor(n=>chosen.has(n.id)?GREEN:baseColor(n,record.best.puzzle.skin || 'atoms'))
+    .linkColor(l=>chosen.has(endpoint(l.source))&&chosen.has(endpoint(l.target))?GREEN:record.best.puzzle.skin === 'metro' ? metroColors[l.line % metroColors.length] : palette.edge)
     .linkWidth(l=>chosen.has(endpoint(l.source))&&chosen.has(endpoint(l.target))?3.5:1)
     .width($('replay-graph').clientWidth).height($('replay-graph').clientHeight).graphData(fixedData(record.best.puzzle));
+  configureView(replayGraph);
   requestAnimationFrame(()=>frameGraph(replayGraph));
 }
 function updateTheme(theme, remember = false) {
@@ -197,8 +246,8 @@ function updateTheme(theme, remember = false) {
   }
   if (replayGraph) {
     replayGraph.backgroundColor(palette.scene)
-      .nodeColor(n => replaySelected.has(n.id) ? GREEN : atomColor(n))
-      .linkColor(l => replaySelected.has(endpoint(l.source)) && replaySelected.has(endpoint(l.target)) ? GREEN : palette.edge);
+      .nodeColor(n => replaySelected.has(n.id) ? GREEN : baseColor(n,replayGraph.graphData().skin))
+      .linkColor(l => replaySelected.has(endpoint(l.source)) && replaySelected.has(endpoint(l.target)) ? GREEN : replayGraph.graphData().skin === 'metro' ? metroColors[l.line % metroColors.length] : palette.edge);
   }
   renderRecords();
 }
@@ -211,6 +260,33 @@ $('close-result').onclick = () => $('result').close();
 $('start').onclick = () => action(start);
 $('replay').onclick = () => action(start);
 $('clear').onclick = () => { selected.clear(); paint(); status(''); };
+$('hint').onclick = () => action(async () => {
+  apply(await api('hint', state.session, state.round));
+  status(['', 'Un point du motif est entouré.', 'Ces deux points forment un lien du motif.', 'Le motif complet est entouré.'][state.hint_level]);
+});
+$('skin').value = skin;
+function showSkin() {
+  document.querySelector('.atom-legend').hidden = skin !== 'atoms';
+  document.querySelector('.metro-legend').hidden = skin !== 'metro';
+  $('instructions').textContent = skin === 'metro' ? 'Sélectionne les stations qui forment le motif. Glisse pour déplacer · Molette pour zoomer.' : 'Sélectionne les points qui forment le motif. Glisse pour tourner · Clic droit pour annuler.';
+  if (graph) paint();
+
+  renderRecords();
+}
+$('skin').onchange = () => action(async () => {
+  const requested = $('skin').value;
+  try {
+    $('loading').hidden = false;
+    const response = state && !state.finished
+      ? await api('next', state.session, state.round, requested)
+      : await api('start', $('mode').value, $('level').value, requested);
+    if (!state || state.finished) { activeMode = $('mode').value; activeLevel = $('level').value; }
+    skin = requested;
+    apply(response); showSkin();
+    try { localStorage.setItem('spotted-skin', skin); } catch (_) {}
+  } finally { $('skin').value = skin; }
+});
+showSkin();
 $('next').onclick = () => action(async()=>{ $('loading').hidden=false; apply(await api('next',state.session,state.round)); if(state.finished) await finish(); });
 async function validateSelection() {
   const result = await api('validate', state.session, state.round, [...selected]);
@@ -224,7 +300,7 @@ async function validateSelection() {
     }
     status(`Repéré en ${seconds(result.seconds)}.`, true);
   } else {
-    status(result.message || 'Ce motif a déjà été trouvé.');
+    status(result.message === $('selection-help').textContent ? '' : result.message || 'Ce motif a déjà été trouvé.');
   }
 }
 $('validate').onclick = () => action(validateSelection);
@@ -255,15 +331,17 @@ try {
     select: toggle, undo: undoSelection,
     hover: id => { hovered = id; if (puzzle) paint(); }
   });
-  const resize = () => {
+  const resize = (reframe = false) => {
     graph.width($('graph-network').clientWidth).height($('graph-network').clientHeight);
-    if (puzzle) frameGraph();
-    if (replayGraph) { replayGraph.width($('replay-graph').clientWidth).height($('replay-graph').clientHeight); frameGraph(replayGraph); }
+    if (puzzle && reframe) frameGraph();
+    if (replayGraph) { replayGraph.width($('replay-graph').clientWidth).height($('replay-graph').clientHeight); if (reframe) frameGraph(replayGraph); }
   };
-  new ResizeObserver(resize).observe($('graph-network')); window.addEventListener('resize',resize); resize();
+  // Feedback can change the available height; keep the player's current view.
+  new ResizeObserver(() => resize()).observe($('graph-network'));
+  window.addEventListener('resize', () => resize(true)); resize();
   setInterval(tick,200);
   action(async()=>{ const settings=await api('settings'); duration=settings.duration; await start(); await refreshRecords(); });
 } catch(error) { status(`Le rendu 3D n’a pas pu démarrer : ${error.message}. Vérifie que WebGL est activé dans le navigateur.`); }
 
-// Renderer export for browser integration checks; solutions stay on the server.
+// Renderer export for browser integration checks.
 export { graph };

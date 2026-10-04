@@ -37,6 +37,55 @@ class GameTests(unittest.TestCase):
         self.assertEqual(self.solve()['score'],2)
         self.assertEqual(self.s['best']['seconds'],1)
 
+    def test_wrong_selection_count_is_explained_without_scoring(self):
+        self.start('free')
+        solution = list(self.s['puzzle'].solution)
+        other = next(n for n in self.s['puzzle'].graph if n not in solution)
+        too_few = self.game.validate(self.s['id'],1,solution[:-1])
+        self.assertIn('Il manque encore 1 point',too_few['message'])
+        too_many = self.game.validate(self.s['id'],1,solution+[other])
+        self.assertIn('1 point en trop',too_many['message'])
+        self.assertIn('Reclique',too_many['message'])
+        self.assertFalse(too_many['correct'])
+        self.assertEqual(too_many['score'],0)
+        self.assertTrue(self.game.validate(self.s['id'],1,solution)['correct'])
+
+    def test_metro_rounds_and_skin_lock(self):
+        state = self.game.start('free','easy','metro')
+        self.s = self.game.sessions[state['session']]
+        self.assertEqual(state['puzzle']['skin'],'metro')
+        self.solve()
+        result = self.game.next(self.s['id'],1,'atoms')
+        self.assertEqual(result['score'],1)
+        self.assertNotIn('skin',result['puzzle'])
+        result = self.game.next(self.s['id'],2,'metro')
+        self.assertEqual(result['puzzle']['skin'],'metro')
+        state = self.game.start('timed','easy','metro')
+        with self.assertRaises(ValueError): self.game.next(state['session'],1,'atoms')
+        self.assertEqual(self.game.sessions[state['session']]['round'],1)
+        with self.assertRaises(ValueError): self.game.start('free','easy','bad')
+
+    def test_new_motifs_guidance_validation_and_snapshots(self):
+        from project.src.utils.graph import EXTENDED_PORTS, generate_puzzle
+        from project.src.utils.metro import generate_metro
+        for skin, generate in [('atoms', generate_puzzle), ('metro', generate_metro)]:
+            for target in EXTENDED_PORTS:
+                puzzle = generate('medium',target=target,seed=19)
+                for mode in ('guided','free','timed'):
+                    with self.subTest(skin=skin,target=target,mode=mode), patch.object(self.game,'puzzle',return_value=puzzle):
+                        state = self.game.start(mode,'medium',skin)
+                        session = self.game.sessions[state['session']]
+                        if mode != 'timed':
+                            for _ in range(3):
+                                hint = self.game.hint(state['session'],1)
+                            self.assertEqual(set(hint['hint_nodes']),puzzle.solution)
+                        if mode == 'guided':
+                            self.assertEqual(set(state['guided_nodes']),puzzle.solution)
+                        result = self.game.validate(state['session'],1,list(puzzle.solution))
+                        self.assertTrue(result['correct'])
+                        self.assertEqual(result['score'],1)
+                        self.assertEqual(session['best']['puzzle']['motif'],puzzle.view['motif'])
+
     def test_server_deadline_and_early_finish(self):
         self.start()
         self.now+=10
@@ -47,6 +96,37 @@ class GameTests(unittest.TestCase):
         self.assertTrue(self.solve()['correct'])
         self.game.finish(self.s['id'])
         self.assertTrue(self.game.next(self.s['id'],1)['finished'])
+
+    def test_guidance_and_progressive_hints_are_scoped_to_round_and_mode(self):
+        for mode in ('guided', 'free'):
+            state = self.start(mode)
+            self.assertIsNone(state['remaining'])
+            self.assertEqual(state['hint_nodes'], [])
+            if mode == 'guided':
+                self.assertEqual(set(state['guided_nodes']), self.s['puzzle'].solution)
+            else:
+                self.assertNotIn('guided_nodes', state)
+            for level, count in ((1, 1), (2, 2), (3, len(self.s['puzzle'].solution)), (3, len(self.s['puzzle'].solution))):
+                hint = self.game.hint(self.s['id'], 1)
+                self.assertEqual(hint['hint_level'], level)
+                self.assertEqual(len(hint['hint_nodes']), count)
+                self.assertLessEqual(set(hint['hint_nodes']), self.s['puzzle'].solution)
+                if level == 2:
+                    self.assertTrue(self.s['puzzle'].graph.has_edge(*hint['hint_nodes']))
+                self.assertEqual(hint['score'], 0)
+            self.solve()
+            with self.assertRaises(ValueError): self.game.hint(self.s['id'], 1)
+            state = self.game.next(self.s['id'], 1)
+            self.assertEqual(state['hint_level'], 0)
+            self.assertEqual(state['hint_nodes'], [])
+            with self.assertRaises(ValueError): self.game.hint(self.s['id'], 1)
+            self.game.finish(self.s['id'])
+            with self.assertRaises(ValueError): self.game.hint(self.s['id'], 2)
+        state = self.start('timed')
+        self.assertNotIn('guided_nodes', state)
+        self.assertNotIn('hint_nodes', state)
+        with self.assertRaises(ValueError): self.game.hint(self.s['id'], 1)
+        self.assertEqual(self.s['hint_level'], 0)
 
     def test_skip_penalty_is_authoritative_and_applied_once(self):
         self.game.config.duration_seconds = 45
