@@ -14,24 +14,30 @@ class App:
         self.pool = ThreadPool(1)
 
     def run(self):
-        eel.init(str(Path(__file__).parent / 'web'))
+        eel.init(str(Path(__file__).parent / "web"))
         for name in dir(self):
-            if name.startswith('eel_'):
+            if name.startswith("eel_"):
                 eel.expose(getattr(self, name))
-        eel.start('index.html', mode='firefox', host='localhost', port=self.config.eel.port,
-                  open_browser=self.config.eel.open_browser_on_start, shutdown_delay=3)
+        eel.start(
+            "index.html",
+            mode="firefox",
+            host="localhost",
+            port=self.config.eel.port,
+            open_browser=self.config.eel.open_browser_on_start,
+            shutdown_delay=3,
+        )
 
     def call(self, fn, *args):
         try:
             return self.pool.spawn(fn, *args).get()
         except (ValueError, TypeError, OSError) as error:
-            logging.exception('Spotted request failed')
-            return {'error': str(error)}
+            logging.exception("Spotted request failed")
+            return {"error": str(error)}
 
     def eel_settings(self):
-        return {'duration': self.config.game.duration_seconds}
+        return {"duration": self.config.game.duration_seconds}
 
-    def eel_start(self, mode, level, skin='atoms'):
+    def eel_start(self, mode, level, skin="atoms"):
         return self.call(self.game.start, mode, level, skin)
 
     def eel_next(self, token, round_id, skin=None):

@@ -12,6 +12,6 @@ cd project
 python run.py --config config/launch.toml
 ```
 
-Cela ouvre la page [http://localhost:8000](http://localhost:8000) dans Firefox. Le terminal doit rester ouvert pendant le jeu ; `Ctrl+C` arrête le serveur.
+Cela ouvre la page [http://localhost:7000](http://localhost:7000) dans Firefox. Le terminal doit rester ouvert pendant le jeu ; `Ctrl+C` arrête le serveur.
 
 Pour jouer, il suffit de choisir un niveau, de préférence **Facile** pour commencer, de faire glisser la scène pour l’explorer, de zoomer avec la molette et de cliquer sur les points du motif. Le mode **Découverte** montre la solution en doré pour apprendre ; le mode **Libre** permet de chercher à son rythme, avec des indices si besoin. Dans ces deux modes, il faut cliquer sur **Valider**, puis sur **Suivant** après une réussite. En mode **Chrono**, il faut cliquer sur **Démarrer**, puis trouver un maximum de motifs avant la fin du temps imparti : la validation et le passage au suivant sont automatiques.

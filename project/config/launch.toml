@@ -1,6 +1,6 @@
 [eel]
 open_browser_on_start = true
-port = 8000
+port = 7000
 
 [game]
 duration_seconds = 60
